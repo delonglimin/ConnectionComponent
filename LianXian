@@ -1,0 +1,329 @@
+<template>
+  <div
+    id="lineCanvas"
+    ref="mainContainer"
+  >
+    <div
+      ref="topContainer"
+      class="topPanel"
+    >
+      <div
+        v-for="(item, index) in topData.list"
+        :key="index"
+        :class="[
+          topData.type == 1 ? 'textItem' : 'picItem',
+          'item',
+          result.indexOf(index) != -1 ? topData.type == 1 ? 'activeTextItem' : 'activePicItem' : '',
+        ]"
+        :style="{ width: itemWidth + 'px' }"
+      >
+        <img
+          v-if="topData.type == 2"
+          :src="item"
+        >
+        <span v-else>{{ item }}</span>
+      </div>
+    </div>
+
+    <div
+      ref="bottomContainer"
+      class="bottomPanel"
+      :style="{ 'margin-top': margin+'px' }"
+    >
+      <div
+        v-for="(item, index) in bottomData.list"
+        :key="index"
+        :class="[
+          bottomData.type == 1 ? 'textItem' : 'picItem',
+          'item',
+          result.indexOf(index + bottomData.list.length) != -1 ? bottomData.type == 1 ? 'activeTextItem' : 'activePicItem' : '',
+        ]"
+        :style="{ width: itemWidth + 'px'}"
+      >
+        <img
+          v-if="bottomData.type == 2"
+          :src="item"
+        >
+        <span v-else>{{ item }}</span>
+      </div>
+    </div>
+
+    <canvas
+      ref="mainCanvas"
+      class="mainCanvas"
+      @click="onCanvasClick"
+    />
+  </div>
+</template>
+
+<script>
+let canvas;
+let ctx;
+let curImgData;
+let lastX, lastY;
+let startX, startY; //为了最后划线
+let startIndex;
+let endIndex;
+
+let topHeight, bottomHeight;
+
+let beginDraw = false;
+export default {
+  name: "LianXian",
+  props: {
+    topData: Object,
+    bottomData: Object,
+    LineProp: Object,
+  },
+  data() {
+    return {
+      itemWidth: 180,
+      // itemHeight: 120,
+      margin: 100,
+      picPositions: [], //前一半是左侧，后一半是右侧
+      result: [],
+    };
+  },
+  computed: {},
+  mounted() {
+    this.initLayout();
+    this.initCtx();
+    this.reset()
+  },
+  methods: {
+    initLayout: function () {
+      this.container = this.$refs.mainContainer;
+      this.topContainer = this.$refs.topContainer;
+      this.bottomContainer = this.$refs.bottomContainer;
+      this.itemLength = this.topData.list.length;
+      // this.margin =
+      //   this.container.offsetHeight -
+      //   20 -
+      //   this.topContainer.offsetHeight -
+      //   this.bottomContainer.offsetHeight +
+      //   "px";
+      this.$nextTick(this.getPicPositions);
+    },
+
+    reset() {
+      this.result = [];
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    },
+    initCtx() {
+      canvas = this.$refs.mainCanvas;
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      ctx = canvas.getContext("2d");
+      ctx.lineWidth = this.LineProp.lineWidth;
+      ctx.strokeStyle = this.LineProp.strokeStyle;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.globalCompositeOperation = "source-over";
+    },
+    onCanvasClick(e) {
+      lastX = e.offsetX;
+      lastY = e.offsetY;
+
+      startIndex = this.getStartPoint();
+      if(startIndex == -1)return
+      let temp = this.result.indexOf(startIndex);
+      // 如果已选择，则不允许再次选择
+      if (temp != -1) {
+        return;
+      }
+
+      if (this.result.length % 2 == 0) {
+        //开始选择
+        if (temp == -1) {
+          this.result.push(startIndex);
+          startX = lastX;
+          startY = lastY;
+          return;
+        }
+      } else {
+        if (
+          this.isSameColume(
+            this.result[this.result.length - 1],
+            startIndex,
+            this.picPositions.length
+          )
+        ) {
+          this.result.splice(this.result.length - 1, 1);
+          startX = lastX;
+          startY = lastY;
+          this.result.push(startIndex);
+        } else {
+          if (temp == -1) {
+            this.result.push(startIndex);
+            this.onCanvasUp(e);
+            if (this.result.length == this.picPositions.length) {
+              this.$emit("onResult", this.result);
+            }
+          }
+        }
+      }
+
+    },
+
+    onCanvasUp(e) {
+      let _this = this;
+      lastX = e.offsetX;
+      lastY = e.offsetY;
+      endIndex = _this.getStartPoint();
+      if(startIndex == -1)return
+      curImgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      ctx.putImageData(curImgData, 0, 0);
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(lastX, lastY);
+      ctx.stroke();
+      this.$emit("onStartCanvas", this.result);
+    },
+    //是否同一行
+    isSameColume(start, end, length) {
+      if (start < length / 2 && end < length / 2) return true;
+      if (start >= length / 2 && end >= length / 2) return true;
+      return false;
+    },
+    //获取起始点在哪一个图片
+    getStartPoint() {
+      var preX = lastX;
+      var preY = lastY;
+      for (let i = 0; i < this.picPositions.length; i++) {
+        let item = this.picPositions[i];
+        if (
+          lastX > item.x &&
+          lastX < item.x + this.itemWidth &&
+          lastY > item.y &&
+          lastY < item.y + item.h
+        ) {
+          //上下 返回点 区分
+          if (i < this.picPositions.length / 2) {
+            lastX = item.x + this.itemWidth / 2;
+            lastY = item.y + item.h;
+            return i; //已经划过了
+          }
+          lastX = item.x + this.itemWidth / 2;
+          lastY = item.y;
+          return i;
+        }
+      }
+      if (preX == lastX && preY == lastY) {
+        return -1;
+      }
+    },
+
+    getPicPositions() {
+      this.picPositions = [];
+      document.querySelectorAll(".topPanel .item").forEach((item, index) => {
+        this.picPositions.push({
+          x: item.offsetLeft,
+          y: item.offsetTop,
+          h: item.offsetHeight,
+        });
+      });
+      document.querySelectorAll(".bottomPanel .item").forEach((item, index) => {
+        this.picPositions.push({
+          x: item.offsetLeft,
+          y: item.offsetTop,
+          h: item.offsetHeight,
+        });
+      });
+    },
+  },
+};
+</script>
+
+<!-- Add "scoped" attribute to limit CSS to this component only -->
+<style scoped lang="scss">
+* {
+  box-sizing: border-box;
+}
+
+#lineCanvas {
+  .activeTextItem {
+    border: 2px solid #5196FD;
+    background: rgba(81,150,253, .2);
+    border-radius: 33px;
+    span{
+      color:#5196FD;
+      font-size: 20px;
+    }
+  }
+  .activePicItem {
+    border: 2px solid #5196FD;
+    background: rgba(81,150,253, .2);
+    border-radius: 12px;
+    span{
+      color:#5196FD;
+      font-size: 20px;
+    }
+  }
+}
+.textItem {
+  display: inline-block;
+  text-align: center;
+  border: 2px solid #f7f8fa;
+  background: #f7f8fa;
+  border-radius: 33px;
+  padding: 16px;
+  span {
+    color:#262626;
+    font-size: 20px;
+  }
+}
+
+.picItem {
+  display: inline-block;
+  text-align: center;
+  height: 132px;
+  img {
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+  }
+}
+img {
+  -webkit-user-drag: none;
+}
+#lineCanvas {
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  position: relative;
+  box-sizing: border-box;
+}
+.leftPanel {
+  width: 30%;
+  height: 100%;
+  float: left;
+  img {
+    width: 100%;
+    height: 100%;
+  }
+}
+.topPanel {
+  display: flex;
+  justify-content: space-around;
+}
+.bottomPanel {
+  display: flex;
+  justify-content: space-around;
+}
+.rightPanel {
+  width: 30%;
+  height: 100%;
+  float: right;
+  img {
+    width: 100%;
+    height: 100%;
+  }
+}
+.mainCanvas {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  left: 0px;
+  top: 0px;
+}
+</style>
