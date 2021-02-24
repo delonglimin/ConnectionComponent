@@ -3,6 +3,8 @@
 
 
 # 使用方式
+
+```
 import Connec from 'LianXian'
       <connect
         :line-prop="LineProp"
@@ -11,11 +13,11 @@ import Connec from 'LianXian'
         @onResult="onResult"
         @onStartCanvas="onStartCanvas"
       />
+```
 
 
-
-line-prop:连线属性，颜色，粗细
-top-data:上面数据
-bottom-data:下面数据
+* line-prop:连线属性，颜色，粗细
+* top-data:上面数据
+* bottom-data:下面数据
 
 支持图文连线、图图连线、文文连线，全部自适应，只需把组件放到一个容器里面即可
